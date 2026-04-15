@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Triple-T Games</title>
+    <style>
+      :root {
+        --bg: #0f1220;
+        --card: #181d33;
+        --card-hover: #212849;
+        --text: #f4f7ff;
+        --muted: #9ca7c7;
+        --accent: #7ea6ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .page {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.4rem, 3vw, 2rem);
+      }
+
+      .toolbar {
+        margin-top: 16px;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 1fr auto;
+      }
+
+      input[type="search"] {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid #2b335b;
+        background: #0d1020;
+        color: var(--text);
+        outline: none;
+      }
+
+      .meta {
+        color: var(--muted);
+        align-self: center;
+      }
+
+      .status {
+        margin-top: 8px;
+        color: var(--muted);
+        min-height: 22px;
+      }
+
+      .games-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        gap: 14px;
+        margin-top: 16px;
+      }
+
+      .card {
+        display: block;
+        background: var(--card);
+        border-radius: 12px;
+        overflow: hidden;
+        text-decoration: none;
+        color: inherit;
+        border: 1px solid #273056;
+        transition: transform 0.15s ease, background 0.15s ease;
+      }
+
+      .card:hover,
+      .card:focus-visible {
+        transform: translateY(-2px);
+        background: var(--card-hover);
+      }
+
+      .card img {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        display: block;
+        background: #10162f;
+      }
+
+      .card-title {
+        padding: 10px;
+        line-height: 1.3;
+        font-size: 0.95rem;
+      }
+
+      .sdk {
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <h1>Triple-T Games</h1>
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Search all games..." aria-label="Search games" />
+        <div id="count" class="meta">Loading...</div>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <section id="games" class="games-grid" aria-label="All games"></section>
+      <p id="sdk-status" class="sdk" aria-live="polite"></p>
+    </main>
+
+    <script src="./poki-sdk.js"></script>
+    <script src="./yandex-sdk.js"></script>
+    <script>
+      const grid = document.getElementById('games');
+      const count = document.getElementById('count');
+      const search = document.getElementById('search');
+      const status = document.getElementById('status');
+      const sdkStatus = document.getElementById('sdk-status');
+
+      let allGames = [];
+
+      function gameCard(game) {
+        const card = document.createElement('a');
+        card.className = 'card';
+        card.href = `gmes/${game.file_name}`;
+        card.title = game.title;
+
+        const img = document.createElement('img');
+        img.src = game.thumb;
+        img.loading = 'lazy';
+        img.alt = `${game.title} thumbnail`;
+
+        const title = document.createElement('div');
+        title.className = 'card-title';
+        title.textContent = game.title;
+
+        card.append(img, title);
+        return card;
+      }
+
+      function render(games) {
+        grid.replaceChildren(...games.map(gameCard));
+        count.textContent = `${games.length.toLocaleString()} game${games.length === 1 ? '' : 's'}`;
+        status.textContent = games.length === allGames.length
+          ? `Showing all ${allGames.length.toLocaleString()} games.`
+          : `Showing ${games.length.toLocaleString()} of ${allGames.length.toLocaleString()} games.`;
+      }
+
+      function filterGames() {
+        const q = search.value.trim().toLowerCase();
+        if (!q) return render(allGames);
+        const filtered = allGames.filter((game) =>
+          game.title.toLowerCase().includes(q) || game.file_name.toLowerCase().includes(q)
+        );
+        render(filtered);
+      }
+
+      async function loadGames() {
+        const paths = ['./games.json', './gmes.json'];
+
+        for (const path of paths) {
+          try {
+            const res = await fetch(path, { cache: 'no-store' });
+            if (!res.ok) continue;
+
+            const data = await res.json();
+            if (!Array.isArray(data)) continue;
+
+            allGames = data;
+            render(allGames);
+            return;
+          } catch (error) {
+            console.warn(`Failed to load ${path}:`, error);
+          }
+        }
+
+        count.textContent = '0 games';
+        status.textContent = 'Could not load games list from games.json or gmes.json.';
+      }
+
+      async function initPokiSdk() {
+        if (!window.PokiSDK || typeof window.PokiSDK.init !== 'function') {
+          return 'Poki SDK not available.';
+        }
+
+        try {
+          await window.PokiSDK.init();
+          return 'Poki SDK initialized.';
+        } catch (error) {
+          return `Poki SDK failed to initialize (${error?.message || 'unknown error'}).`;
+        }
+      }
+
+      async function initYandexSdk() {
+        if (!window.YaGames || typeof window.YaGames.init !== 'function') {
+          return 'Yandex SDK not available.';
+        }
+
+        try {
+          await window.YaGames.init();
+          return 'Yandex SDK initialized.';
+        } catch (error) {
+          return `Yandex SDK failed to initialize (${error?.message || 'unknown error'}).`;
+        }
+      }
+
+      async function initSdks() {
+        const [pokiMessage, yandexMessage] = await Promise.all([initPokiSdk(), initYandexSdk()]);
+        sdkStatus.textContent = `${pokiMessage} ${yandexMessage}`;
+      }
+
+      search.addEventListener('input', filterGames);
+      loadGames();
+      initSdks();
+    </script>
+  </body>
+</html>
