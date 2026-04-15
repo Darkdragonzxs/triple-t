@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Triple-T Game Frame</title>
+    <style>
+      :root { --bg: #0d1224; --panel: #171f39; --text: #edf2ff; --muted: #97a5c9; --accent: #5b8cff; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      .topbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        background: var(--panel);
+        border-bottom: 1px solid #243159;
+      }
+      .left { display: flex; gap: 8px; align-items: center; min-width: 0; }
+      .right { display: flex; gap: 8px; align-items: center; }
+      .path { color: var(--muted); font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }
+      button, a.btn {
+        appearance: none;
+        border: 1px solid #2f4a9e;
+        background: #13214a;
+        color: white;
+        border-radius: 8px;
+        padding: 8px 12px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      iframe {
+        width: 100%;
+        height: calc(100vh - 56px);
+        border: 0;
+        background: #000;
+      }
+      .empty {
+        min-height: calc(100vh - 56px);
+        display: grid;
+        place-content: center;
+        text-align: center;
+        gap: 10px;
+      }
+      .recent {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="left">
+        <a class="btn" href="index.html">← Back to games</a>
+        <span id="path" class="path"></span>
+      </div>
+      <div class="right">
+        <button id="fullscreen" type="button">Fullscreen</button>
+      </div>
+    </header>
+
+    <main id="main"></main>
+
+    <script>
+      const CURRENT_GAME_KEY = 'triple_t_current_game';
+      const RECENT_GAMES_KEY = 'triple_t_recent_games';
+      const RECENT_LIMIT = 20;
+
+      function safeParse(json, fallback) {
+        try {
+          return JSON.parse(json) ?? fallback;
+        } catch {
+          return fallback;
+        }
+      }
+
+      function sanitizeGamePath(input) {
+        if (!input || typeof input !== 'string') return '';
+        let path = input.trim();
+        try {
+          path = decodeURIComponent(path);
+        } catch {}
+
+        if (!path.startsWith('/gmes/')) return '';
+        if (path.includes('..')) return '';
+
+        return path;
+      }
+
+      function saveRecent(path) {
+        const now = Date.now();
+        const oldRecent = safeParse(localStorage.getItem(RECENT_GAMES_KEY), []);
+        const filtered = Array.isArray(oldRecent)
+          ? oldRecent.filter((entry) => entry && entry.path !== path)
+          : [];
+
+        const next = [{ path, at: now }, ...filtered].slice(0, RECENT_LIMIT);
+        localStorage.setItem(RECENT_GAMES_KEY, JSON.stringify(next));
+      }
+
+      function handleIncomingQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const queryPath = sanitizeGamePath(params.get('url'));
+
+        if (!queryPath) return false;
+
+        localStorage.setItem(CURRENT_GAME_KEY, queryPath);
+        saveRecent(queryPath);
+
+        const cleanUrl = `${window.location.pathname}${window.location.hash || ''}`;
+        window.location.replace(cleanUrl);
+        return true;
+      }
+
+      function renderGame(path) {
+        const main = document.getElementById('main');
+        const frame = document.createElement('iframe');
+        frame.allow = 'autoplay; fullscreen; gamepad; clipboard-read; clipboard-write';
+        frame.referrerPolicy = 'strict-origin-when-cross-origin';
+        frame.src = path;
+        frame.id = 'game-frame';
+        main.replaceChildren(frame);
+        document.getElementById('path').textContent = path;
+      }
+
+      function renderEmpty() {
+        const main = document.getElementById('main');
+        const holder = document.createElement('div');
+        holder.className = 'empty';
+        holder.innerHTML = `
+          <h2>No game selected</h2>
+          <p>Pick any game from the games page to launch it here.</p>
+          <a class="btn" href="index.html">Open games page</a>
+        `;
+        main.replaceChildren(holder);
+        document.getElementById('path').textContent = '';
+      }
+
+      async function goFullscreen() {
+        const frame = document.getElementById('game-frame');
+        if (!frame || !frame.requestFullscreen) return;
+        try {
+          await frame.requestFullscreen();
+        } catch (error) {
+          console.warn('Fullscreen failed:', error);
+        }
+      }
+
+      function showRecentHint() {
+        const recent = safeParse(localStorage.getItem(RECENT_GAMES_KEY), []);
+        if (!Array.isArray(recent) || recent.length === 0) return;
+
+        const first = recent[0]?.path;
+        if (!first) return;
+
+        const bar = document.querySelector('.topbar');
+        const hint = document.createElement('div');
+        hint.className = 'recent';
+        hint.textContent = `Recent: ${recent.slice(0, 3).map((entry) => entry.path).join(' • ')}`;
+        bar.insertAdjacentElement('afterend', hint);
+      }
+
+      document.getElementById('fullscreen').addEventListener('click', goFullscreen);
+
+      const redirected = handleIncomingQuery();
+      if (!redirected) {
+        const savedPath = sanitizeGamePath(localStorage.getItem(CURRENT_GAME_KEY));
+        if (savedPath) renderGame(savedPath);
+        else renderEmpty();
+        showRecentHint();
+      }
+    </script>
+  </body>
+</html>
