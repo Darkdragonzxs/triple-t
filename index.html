@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Triple-T Games</title>
+  <title>triple t skibidi</title>
   <style>
     :root { color-scheme: dark; }
     body {
@@ -288,7 +288,7 @@
           if (back) {
             back.addEventListener('click', function () {
               try { localStorage.removeItem('triple_t_recent_games'); } catch {}
-              location.href = '/';
+              location.href = location.pathname;
             });
           }
           if (fs) {
