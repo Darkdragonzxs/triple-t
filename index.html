@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>triple t skibidi</title>
+  <title>sus</title>
   <style>
     :root { color-scheme: dark; }
     body {
@@ -238,7 +238,8 @@
         const res = await fetch(gameUrl, { method: 'GET', cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const html = await res.text();
-        writeGameDocument(html);
+        const blobUrl = buildGameBlobUrl(html, gameUrl);
+        renderBlobGame(blobUrl, gameUrl);
       } catch (err) {
         console.error(err);
         document.body.innerHTML = `<div class="error">Failed to load game from CDN. <a href="${gameUrl}">Open file directly</a> · <a href="/">Back to games</a></div>`;
@@ -247,64 +248,55 @@
       return true;
     }
 
-    function writeGameDocument(html) {
+    function buildGameBlobUrl(html, gameUrl) {
       const parser = new DOMParser();
       const parsed = parser.parseFromString(html, 'text/html');
-      const docTitle = parsed.title || 'Triple-T Game';
-      parsed.title = docTitle;
+      const hasBase = parsed.head && parsed.head.querySelector('base');
+      if (!hasBase && parsed.head) {
+        const base = parsed.createElement('base');
+        base.setAttribute('href', gameUrl);
+        parsed.head.prepend(base);
+      }
 
-      const controls = parsed.createElement('div');
-      controls.setAttribute('id', 'tripleTControls');
-      controls.innerHTML = `
-        <button id="ttBackBtn" title="Back to games">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 11H7.83l4.58-4.59L11 5l-7 7 7 7 1.41-1.41L7.83 13H20z"/></svg>
-        </button>
-        <button id="ttFsBtn" title="Fullscreen">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm0-4h2V7h3V5H5v5zm10 7h-3v2h5v-5h-2v3zm0-12v3h2V5h-5v2h3z"/></svg>
-        </button>
+      const blobHtml = '<!doctype html>\\n' + parsed.documentElement.outerHTML;
+      const blob = new Blob([blobHtml], { type: 'text/html' });
+      return URL.createObjectURL(blob);
+    }
+
+    function renderBlobGame(blobUrl, gameUrl) {
+      document.body.innerHTML = `
+        <div id="tripleTGameShell" style="position:fixed;inset:0;background:#070b16;">
+          <div style="position:fixed;top:10px;left:10px;z-index:2147483647;display:flex;gap:8px;">
+            <button id="ttBackBtn" title="Back to games" style="width:40px;height:40px;border:1px solid rgba(255,255,255,.25);border-radius:999px;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;display:grid;place-items:center;padding:0;">
+              <svg viewBox="0 0 24 24" aria-hidden="true" style="width:22px;height:22px"><path fill="currentColor" d="M20 11H7.83l4.58-4.59L11 5l-7 7 7 7 1.41-1.41L7.83 13H20z"/></svg>
+            </button>
+            <button id="ttFsBtn" title="Fullscreen" style="width:40px;height:40px;border:1px solid rgba(255,255,255,.25);border-radius:999px;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;display:grid;place-items:center;padding:0;">
+              <svg viewBox="0 0 24 24" aria-hidden="true" style="width:22px;height:22px"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm0-4h2V7h3V5H5v5zm10 7h-3v2h5v-5h-2v3zm0-12v3h2V5h-5v2h3z"/></svg>
+            </button>
+            <a href="${gameUrl}" target="_blank" rel="noopener" title="Open source file" style="display:grid;place-items:center;width:40px;height:40px;border:1px solid rgba(255,255,255,.25);border-radius:999px;background:rgba(0,0,0,.55);color:#fff;text-decoration:none;font-size:20px;">↗</a>
+          </div>
+          <iframe id="ttBlobFrame" src="${blobUrl}" style="position:absolute;inset:0;border:0;width:100%;height:100%;background:#0b1226;" allow="autoplay; gamepad; fullscreen"></iframe>
+        </div>
       `;
-      parsed.body.prepend(controls);
 
-      const style = parsed.createElement('style');
-      style.textContent = `
-        #tripleTControls{
-          position:fixed;top:10px;left:10px;z-index:2147483647;
-          display:flex;gap:8px;
-        }
-        #tripleTControls button{
-          width:40px;height:40px;border:1px solid rgba(255,255,255,.25);
-          border-radius:999px;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;
-          display:grid;place-items:center;padding:0;
-        }
-        #tripleTControls svg{width:22px;height:22px}
-      `;
-      parsed.head.appendChild(style);
+      const back = document.getElementById('ttBackBtn');
+      const fs = document.getElementById('ttFsBtn');
+      const frame = document.getElementById('ttBlobFrame');
 
-      const script = parsed.createElement('script');
-      script.textContent = `
-        (function () {
-          var back = document.getElementById('ttBackBtn');
-          var fs = document.getElementById('ttFsBtn');
-          if (back) {
-            back.addEventListener('click', function () {
-              try { localStorage.removeItem('triple_t_recent_games'); } catch {}
-              location.href = location.pathname;
-            });
-          }
-          if (fs) {
-            fs.addEventListener('click', function () {
-              var target = document.documentElement;
-              if (target && target.requestFullscreen) target.requestFullscreen().catch(function(){});
-            });
-          }
-        })();
-      `;
-      parsed.body.appendChild(script);
+      if (back) {
+        back.addEventListener('click', () => {
+          try { localStorage.removeItem('triple_t_recent_games'); } catch {}
+          URL.revokeObjectURL(blobUrl);
+          location.href = location.pathname;
+        });
+      }
 
-      const serialized = '<!doctype html>\\n' + parsed.documentElement.outerHTML;
-      document.open();
-      document.write(serialized);
-      document.close();
+      if (fs) {
+        fs.addEventListener('click', () => {
+          const target = frame && frame.requestFullscreen ? frame : document.documentElement;
+          if (target && target.requestFullscreen) target.requestFullscreen().catch(() => {});
+        });
+      }
     }
 
     function initSdkStatus() {
