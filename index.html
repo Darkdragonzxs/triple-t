@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Triple-T Games</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0b1020;
+      color: #e6ebff;
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    h1 { margin: 0 0 8px; font-size: 1.8rem; }
+    .sub { margin: 0 0 16px; color: #9aa8d1; }
+    .toolbar {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr auto;
+      margin-bottom: 14px;
+    }
+    #search {
+      border: 1px solid #2a3559;
+      background: #111933;
+      color: #e6ebff;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 14px;
+    }
+    .status {
+      align-self: center;
+      color: #9aa8d1;
+      font-size: 13px;
+      text-align: right;
+    }
+    .sdk {
+      margin-bottom: 14px;
+      font-size: 12px;
+      color: #8ea1d4;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: #121b36;
+      border: 1px solid #243156;
+      border-radius: 12px;
+      overflow: hidden;
+      transition: transform .12s ease, border-color .12s ease;
+    }
+    .card:hover { transform: translateY(-2px); border-color: #4d67b5; }
+    .thumb {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      background: #0d1429;
+      display: block;
+    }
+    .title {
+      font-size: 13px;
+      padding: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .empty { color: #9aa8d1; font-size: 14px; padding: 8px 0; }
+  </style>
+
+  <script src="https://sdk.yandex.ru/games/sdk/v2" defer></script>
+  <script src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js" defer></script>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Triple-T Games</h1>
+    <p class="sub">Dynamic catalog loaded from JSON.</p>
+
+    <div class="sdk" id="sdkStatus" aria-live="polite">SDK status: waiting…</div>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search games…" aria-label="Search games" />
+      <div class="status"><span id="count">0</span> shown</div>
+    </div>
+
+    <div id="empty" class="empty" hidden>No games found.</div>
+    <section id="cards" class="cards" aria-live="polite"></section>
+  </main>
+
+  <script>
+    const CDN_BASE = 'https://cdn.jsdelivr.net/gh/Hydra-Network/hydra-assets@main/';
+    const JSON_CANDIDATES = [
+      `${CDN_BASE}games.json`,
+      './games.json',
+      './gmes.json'
+    ];
+
+    const elCards = document.getElementById('cards');
+    const elSearch = document.getElementById('search');
+    const elCount = document.getElementById('count');
+    const elEmpty = document.getElementById('empty');
+    const elSdkStatus = document.getElementById('sdkStatus');
+
+    let allGames = [];
+
+    function toAssetUrl(path) {
+      if (!path) return '';
+      if (/^https?:\/\//i.test(path)) return path;
+      return `${CDN_BASE}${String(path).replace(/^\/+/, '')}`;
+    }
+
+    function normalizeGamePath(fileName) {
+      const clean = String(fileName || '').trim().replace(/^\/+/, '');
+      if (!clean) return '';
+      if (clean.startsWith('gmes/')) return `/${clean}`;
+      return `/gmes/${clean}`;
+    }
+
+    function render(games, filter = '') {
+      const q = filter.trim().toLowerCase();
+      const filtered = q
+        ? games.filter((g) => `${g.title || ''} ${g.file_name || ''}`.toLowerCase().includes(q))
+        : games;
+
+      elCards.innerHTML = filtered.map((game) => {
+        const title = game.title || game.file_name || 'Untitled';
+        const gamePath = normalizeGamePath(game.file_name);
+        const href = `gameframe.html?url=${encodeURIComponent(gamePath)}`;
+        const thumb = toAssetUrl(game.thumb || '');
+        return `
+          <a class="card" href="${href}" data-title="${escapeAttr(title)}" data-file="${escapeAttr(game.file_name || '')}">
+            <img class="thumb" loading="lazy" src="${thumb}" alt="${escapeAttr(title)} thumbnail" />
+            <div class="title" title="${escapeAttr(title)}">${escapeHtml(title)}</div>
+          </a>
+        `;
+      }).join('');
+
+      elCount.textContent = String(filtered.length);
+      elEmpty.hidden = filtered.length > 0;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replace(/"/g, '&quot;');
+    }
+
+    async function loadGames() {
+      let lastError = null;
+      for (const url of JSON_CANDIDATES) {
+        try {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (Array.isArray(data)) return data;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error('Could not load games JSON.');
+    }
+
+    function initSdkStatus() {
+      const bits = [];
+      if (window.PokiSDK) bits.push('Poki loaded');
+      if (window.YaGames) bits.push('Yandex loaded');
+      elSdkStatus.textContent = bits.length ? `SDK status: ${bits.join(' • ')}` : 'SDK status: not available';
+
+      if (window.PokiSDK?.init) {
+        window.PokiSDK.init().catch(() => {});
+      }
+
+      if (window.YaGames?.init) {
+        window.YaGames.init().catch(() => {});
+      }
+    }
+
+    elSearch.addEventListener('input', () => render(allGames, elSearch.value));
+
+    window.addEventListener('load', async () => {
+      initSdkStatus();
+      try {
+        allGames = await loadGames();
+        render(allGames);
+      } catch (err) {
+        console.error(err);
+        elEmpty.hidden = false;
+        elEmpty.textContent = 'Failed to load games list.';
+      }
+    });
+  </script>
+</body>
+</html>

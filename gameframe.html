@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game Frame</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      background: #080d1a;
+      color: #e7ecff;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    header {
+      padding: 10px 14px;
+      background: #101936;
+      border-bottom: 1px solid #233057;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .title { font-size: 14px; color: #9db0de; margin-right: auto; }
+    button, a {
+      border: 1px solid #2f4272;
+      border-radius: 8px;
+      background: #132149;
+      color: #f0f4ff;
+      padding: 8px 10px;
+      text-decoration: none;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #0b1226;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="index.html">← Games</a>
+    <div class="title" id="gameLabel">Loading…</div>
+    <button id="fullscreenBtn" type="button">Fullscreen</button>
+  </header>
+  <iframe id="gameFrame" allow="autoplay; fullscreen; gamepad" referrerpolicy="no-referrer"></iframe>
+
+  <script>
+    const CDN_BASE = 'https://cdn.jsdelivr.net/gh/Hydra-Network/hydra-assets@main/';
+    const CURRENT_GAME_KEY = 'triple_t_current_game';
+    const RECENT_GAMES_KEY = 'triple_t_recent_games';
+    const RECENT_LIMIT = 20;
+
+    const frame = document.getElementById('gameFrame');
+    const label = document.getElementById('gameLabel');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+    function safeParse(value, fallback) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return fallback;
+      }
+    }
+
+    function sanitizeGamePath(input) {
+      const str = String(input || '').trim();
+      if (!str) return null;
+
+      if (/^https?:\/\//i.test(str)) {
+        try {
+          const url = new URL(str);
+          if (!/cdn\.jsdelivr\.net$/i.test(url.hostname)) return null;
+          const path = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+          if (!path.startsWith('gh/Hydra-Network/hydra-assets@main/')) return null;
+          const rel = path.replace(/^gh\/Hydra-Network\/hydra-assets@main\//, '');
+          return normalizeRelativePath(rel);
+        } catch {
+          return null;
+        }
+      }
+
+      return normalizeRelativePath(str.replace(/^\/+/, ''));
+    }
+
+    function normalizeRelativePath(path) {
+      if (!path) return null;
+      const normalized = path
+        .replace(/\\+/g, '/')
+        .replace(/^\.\//, '')
+        .split('/')
+        .filter(Boolean)
+        .join('/');
+
+      if (!normalized || normalized.includes('..')) return null;
+      if (normalized.startsWith('gmes/')) return `/${normalized}`;
+      if (normalized.endsWith('.html')) return `/gmes/${normalized}`;
+      return null;
+    }
+
+    function toCdnUrl(gamePath) {
+      return `${CDN_BASE}${gamePath.replace(/^\/+/, '')}`;
+    }
+
+    function saveRecent(gamePath) {
+      const current = safeParse(localStorage.getItem(RECENT_GAMES_KEY), []);
+      const list = Array.isArray(current) ? current.filter((x) => typeof x === 'string') : [];
+      const deduped = [gamePath, ...list.filter((x) => x !== gamePath)].slice(0, RECENT_LIMIT);
+      localStorage.setItem(RECENT_GAMES_KEY, JSON.stringify(deduped));
+    }
+
+    function storeAndRedirectIfQuery() {
+      const params = new URLSearchParams(location.search);
+      const raw = params.get('url') || params.get('path');
+      if (!raw) return;
+
+      const safePath = sanitizeGamePath(raw);
+      if (!safePath) {
+        label.textContent = 'Invalid game URL.';
+        return;
+      }
+
+      localStorage.setItem(CURRENT_GAME_KEY, safePath);
+      saveRecent(safePath);
+      history.replaceState(null, '', location.pathname);
+    }
+
+    function loadCurrentGame() {
+      const gamePath = sanitizeGamePath(localStorage.getItem(CURRENT_GAME_KEY));
+      if (!gamePath) {
+        label.textContent = 'No game selected.';
+        frame.removeAttribute('src');
+        return;
+      }
+
+      const fileName = gamePath.split('/').pop() || gamePath;
+      label.textContent = decodeURIComponent(fileName);
+      frame.src = toCdnUrl(gamePath);
+      frame.title = `Game: ${fileName}`;
+    }
+
+    fullscreenBtn.addEventListener('click', async () => {
+      try {
+        const target = frame.requestFullscreen ? frame : document.documentElement;
+        await target.requestFullscreen();
+      } catch (err) {
+        console.warn('Fullscreen failed', err);
+      }
+    });
+
+    storeAndRedirectIfQuery();
+    loadCurrentGame();
+  </script>
+</body>
+</html>
